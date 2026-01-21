@@ -1,0 +1,16 @@
+[project]
+name = "apple-mail-mcp"
+version = "1.0.0"
+description = "MCP server for Apple Mail integration via AppleScript"
+requires-python = ">=3.10"
+dependencies = ["mcp"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+apple-mail-mcp = "apple_mail_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
