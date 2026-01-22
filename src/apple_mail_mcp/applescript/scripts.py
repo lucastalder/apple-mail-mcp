@@ -431,3 +431,36 @@ tell application "Mail"
     return successCount & " of " & (count of idList) & " messages updated"
 end tell
 '''
+
+    @staticmethod
+    def create_mailbox(account_name: str, mailbox_name: str, parent_mailbox: str | None = None) -> str:
+        """Create a new mailbox in an account."""
+        if parent_mailbox:
+            return f'''
+tell application "Mail"
+    set acc to account "{account_name}"
+    set parentMb to mailbox "{parent_mailbox}" of acc
+    make new mailbox with properties {{name:"{mailbox_name}"}} at parentMb
+    return "created"
+end tell
+'''
+        else:
+            return f'''
+tell application "Mail"
+    set acc to account "{account_name}"
+    make new mailbox with properties {{name:"{mailbox_name}"}} at acc
+    return "created"
+end tell
+'''
+
+    @staticmethod
+    def rename_mailbox(account_name: str, mailbox_path: str, new_name: str) -> str:
+        """Rename a mailbox."""
+        return f'''
+tell application "Mail"
+    set acc to account "{account_name}"
+    set mb to mailbox "{mailbox_path}" of acc
+    set name of mb to "{new_name}"
+    return "renamed"
+end tell
+'''

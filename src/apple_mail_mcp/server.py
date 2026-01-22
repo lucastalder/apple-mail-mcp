@@ -7,7 +7,11 @@ from mcp.server.fastmcp import FastMCP
 
 from .applescript.executor import AppleScriptExecutor, AppleScriptError
 from .tools.accounts import list_accounts as _list_accounts
-from .tools.mailboxes import list_mailboxes as _list_mailboxes
+from .tools.mailboxes import (
+    list_mailboxes as _list_mailboxes,
+    create_mailbox as _create_mailbox,
+    rename_mailbox as _rename_mailbox,
+)
 from .tools.messages import (
     list_messages as _list_messages,
     read_messages as _read_messages,
@@ -238,6 +242,62 @@ def set_messages_status(
             "Failed to set status in '%s/%s': %s",
             account_name,
             mailbox_path,
+            e,
+        )
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def create_mailbox(
+    account_name: str,
+    mailbox_name: str,
+    parent_mailbox: str | None = None,
+) -> dict:
+    """
+    Create a new mailbox (folder) in an account.
+
+    Args:
+        account_name: The name of the mail account
+        mailbox_name: Name for the new mailbox
+        parent_mailbox: Optional parent mailbox path for nested creation
+
+    Returns success status.
+    """
+    try:
+        return _create_mailbox(executor, account_name, mailbox_name, parent_mailbox)
+    except AppleScriptError as e:
+        logger.error(
+            "Failed to create mailbox '%s' in '%s': %s",
+            mailbox_name,
+            account_name,
+            e,
+        )
+        return {"success": False, "error": str(e)}
+
+
+@mcp.tool()
+def rename_mailbox(
+    account_name: str,
+    mailbox_path: str,
+    new_name: str,
+) -> dict:
+    """
+    Rename a mailbox.
+
+    Args:
+        account_name: The name of the mail account
+        mailbox_path: Path to the mailbox to rename
+        new_name: New name for the mailbox
+
+    Returns success status.
+    """
+    try:
+        return _rename_mailbox(executor, account_name, mailbox_path, new_name)
+    except AppleScriptError as e:
+        logger.error(
+            "Failed to rename mailbox '%s' in '%s': %s",
+            mailbox_path,
+            account_name,
             e,
         )
         return {"success": False, "error": str(e)}

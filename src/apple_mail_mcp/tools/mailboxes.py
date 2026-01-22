@@ -64,3 +64,67 @@ def list_mailboxes(
 
     logger.info("Found %d mailboxes for account '%s'", len(mailboxes), account_name)
     return mailboxes
+
+
+def create_mailbox(
+    executor: AppleScriptExecutor,
+    account_name: str,
+    mailbox_name: str,
+    parent_mailbox: str | None = None,
+) -> dict:
+    """
+    Create a new mailbox in an account.
+
+    Args:
+        executor: The AppleScript executor instance
+        account_name: Name of the mail account
+        mailbox_name: Name for the new mailbox
+        parent_mailbox: Optional parent mailbox path for nested creation
+
+    Returns:
+        Dict with success status
+    """
+    script = Scripts.create_mailbox(account_name, mailbox_name, parent_mailbox)
+    executor.run(script)
+
+    location = f"{parent_mailbox}/{mailbox_name}" if parent_mailbox else mailbox_name
+    logger.info("Created mailbox '%s' in account '%s'", location, account_name)
+
+    return {
+        "success": True,
+        "message": f"Mailbox '{location}' created",
+    }
+
+
+def rename_mailbox(
+    executor: AppleScriptExecutor,
+    account_name: str,
+    mailbox_path: str,
+    new_name: str,
+) -> dict:
+    """
+    Rename a mailbox.
+
+    Args:
+        executor: The AppleScript executor instance
+        account_name: Name of the mail account
+        mailbox_path: Path to the mailbox to rename
+        new_name: New name for the mailbox
+
+    Returns:
+        Dict with success status
+    """
+    script = Scripts.rename_mailbox(account_name, mailbox_path, new_name)
+    executor.run(script)
+
+    logger.info(
+        "Renamed mailbox '%s' to '%s' in account '%s'",
+        mailbox_path,
+        new_name,
+        account_name,
+    )
+
+    return {
+        "success": True,
+        "message": f"Mailbox '{mailbox_path}' renamed to '{new_name}'",
+    }

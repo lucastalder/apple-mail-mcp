@@ -5,6 +5,7 @@ An MCP (Model Context Protocol) server for Apple Mail, enabling AI assistants to
 ## Features
 
 - List mail accounts and mailboxes
+- Create and rename mailboxes
 - Search messages by sender or subject
 - Read message content (single or batch)
 - Move messages between mailboxes
@@ -108,6 +109,24 @@ Set read and/or flagged status for one or more messages.
 | message_ids | list[int] | List of message IDs to update |
 | read_status | bool | Mark as read (true) or unread (false) |
 | flagged_status | bool | Flag (true) or unflag (false) |
+
+### create_mailbox
+Create a new mailbox (folder).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| account_name | string | The account name |
+| mailbox_name | string | Name for the new mailbox |
+| parent_mailbox | string | Parent mailbox path for nested creation (optional) |
+
+### rename_mailbox
+Rename a mailbox.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| account_name | string | The account name |
+| mailbox_path | string | Path to the mailbox to rename |
+| new_name | string | New name for the mailbox |
 
 ## Examples
 
