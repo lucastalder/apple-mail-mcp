@@ -112,6 +112,7 @@ def read_messages(
     account_name: str,
     mailbox_path: str,
     message_ids: list[int],
+    content_limit: int | None = None,
 ) -> list[dict]:
     """
     Read the full content of one or more messages.
@@ -120,12 +121,13 @@ def read_messages(
         account_name: The name of the mail account
         mailbox_path: Path to the mailbox containing the messages
         message_ids: List of message IDs to read (from list_messages or search_messages)
+        content_limit: Maximum characters to return per message body (default: None = full content)
 
     Returns a list of full messages including subject, sender, recipients (to, cc),
     date, read/flagged status, and the message content/body.
     """
     try:
-        messages = _read_messages(executor, account_name, mailbox_path, message_ids)
+        messages = _read_messages(executor, account_name, mailbox_path, message_ids, content_limit)
         return [asdict(msg) if hasattr(msg, "__dataclass_fields__") else msg for msg in messages]
     except AppleScriptError as e:
         logger.error(

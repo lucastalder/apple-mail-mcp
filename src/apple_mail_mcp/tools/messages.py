@@ -149,6 +149,7 @@ def read_messages(
     account_name: str,
     mailbox_path: str,
     message_ids: list[int],
+    content_limit: int | None = None,
 ) -> list[Message | dict]:
     """
     Read multiple messages by their IDs in a single call.
@@ -158,6 +159,7 @@ def read_messages(
         account_name: Name of the mail account
         mailbox_path: Path to the mailbox
         message_ids: List of AppleScript message IDs
+        content_limit: Maximum characters to return per message body (None = full content)
 
     Returns:
         List of Message objects (or error dicts for failed reads)
@@ -187,6 +189,9 @@ def read_messages(
             continue
 
         if len(parts) >= 9:
+            content = parts[8] if len(parts) > 8 else ""
+            if content_limit is not None and len(content) > content_limit:
+                content = content[:content_limit] + "..."
             messages.append(
                 Message(
                     id=msg_id,
@@ -197,7 +202,7 @@ def read_messages(
                     date=parts[5].strip(),
                     is_read=parts[6].strip().lower() == "true",
                     is_flagged=parts[7].strip().lower() == "true",
-                    content=parts[8] if len(parts) > 8 else "",
+                    content=content,
                 )
             )
 
