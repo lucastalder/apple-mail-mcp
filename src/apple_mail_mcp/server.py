@@ -6,6 +6,8 @@ from dataclasses import asdict
 from mcp.server.fastmcp import FastMCP
 
 from .applescript.executor import AppleScriptExecutor, AppleScriptError
+from .applescript.scripts import Scripts
+from .gmail import is_gmail_account
 from .tools.accounts import list_accounts as _list_accounts
 from .tools.mailboxes import (
     list_mailboxes as _list_mailboxes,
@@ -36,9 +38,32 @@ mcp = FastMCP("Apple Mail")
 # Shared executor instance
 executor = AppleScriptExecutor()
 
+# Cache for Gmail detection (by server name)
+_account_is_gmail: dict[str, bool] = {}
+
+
+def _is_account_gmail(account_name: str) -> bool:
+    """Check if an account uses Gmail/Google servers.
+
+    Uses server name detection to catch both @gmail.com accounts
+    and Google Workspace accounts with custom domains.
+    """
+    if account_name in _account_is_gmail:
+        return _account_is_gmail[account_name]
+
+    try:
+        script = Scripts.get_account_server(account_name)
+        server_name = executor.run(script, timeout=10).strip()
+        result = is_gmail_account(server_name)
+        _account_is_gmail[account_name] = result
+        return result
+    except AppleScriptError:
+        _account_is_gmail[account_name] = False
+        return False
+
 
 @mcp.tool()
-def list_accounts() -> list[dict]:
+def list_accounts() -> dict:
     """
     List all mail accounts configured in Apple Mail.
 
@@ -47,14 +72,17 @@ def list_accounts() -> list[dict]:
     """
     try:
         accounts = _list_accounts(executor)
-        return [asdict(acc) for acc in accounts]
+        return {
+            "success": True,
+            "data": [asdict(acc) for acc in accounts],
+        }
     except AppleScriptError as e:
         logger.error("Failed to list accounts: %s", e)
-        return [{"error": str(e)}]
+        return {"success": False, "error": str(e), "data": []}
 
 
 @mcp.tool()
-def list_mailboxes(account_name: str, include_nested: bool = True) -> list[dict]:
+def list_mailboxes(account_name: str, include_nested: bool = True) -> dict:
     """
     List mailboxes (folders) for a specific mail account.
 
@@ -66,10 +94,13 @@ def list_mailboxes(account_name: str, include_nested: bool = True) -> list[dict]
     """
     try:
         mailboxes = _list_mailboxes(executor, account_name, include_nested)
-        return [asdict(mb) for mb in mailboxes]
+        return {
+            "success": True,
+            "data": [asdict(mb) for mb in mailboxes],
+        }
     except AppleScriptError as e:
         logger.error("Failed to list mailboxes for '%s': %s", account_name, e)
-        return [{"error": str(e)}]
+        return {"success": False, "error": str(e), "data": []}
 
 
 @mcp.tool()
@@ -82,7 +113,7 @@ def list_messages(
     flagged_only: bool = False,
     include_content: bool = False,
     content_limit: int | None = None,
-) -> list[dict]:
+) -> dict:
     """
     List messages in a mailbox with optional filtering.
 
@@ -103,16 +134,28 @@ def list_messages(
     Full message adds: to, cc, content.
     """
     try:
-        messages = _list_messages(
+        result = _list_messages(
             executor, account_name, mailbox_path, limit, offset, unread_only, flagged_only,
             include_content, content_limit
         )
-        return [asdict(msg) for msg in messages]
+        # Convert message objects to dicts
+        messages = [
+            asdict(msg) if hasattr(msg, "__dataclass_fields__") else msg
+            for msg in result["messages"]
+        ]
+        return {
+            "success": True,
+            "data": messages,
+            "total": result["total"],
+            "offset": result["offset"],
+            "limit": result["limit"],
+            "has_more": result["has_more"],
+        }
     except AppleScriptError as e:
         logger.error(
             "Failed to list messages in '%s/%s': %s", account_name, mailbox_path, e
         )
-        return [{"error": str(e)}]
+        return {"success": False, "error": str(e), "data": [], "total": 0, "offset": offset, "limit": limit, "has_more": False}
 
 
 @mcp.tool()
@@ -121,7 +164,7 @@ def read_messages(
     mailbox_path: str,
     message_ids: list[int],
     content_limit: int | None = None,
-) -> list[dict]:
+) -> dict:
     """
     Read the full content of one or more messages.
 
@@ -136,7 +179,10 @@ def read_messages(
     """
     try:
         messages = _read_messages(executor, account_name, mailbox_path, message_ids, content_limit)
-        return [asdict(msg) if hasattr(msg, "__dataclass_fields__") else msg for msg in messages]
+        return {
+            "success": True,
+            "data": [asdict(msg) if hasattr(msg, "__dataclass_fields__") else msg for msg in messages],
+        }
     except AppleScriptError as e:
         logger.error(
             "Failed to read messages in '%s/%s': %s",
@@ -144,7 +190,7 @@ def read_messages(
             mailbox_path,
             e,
         )
-        return [{"error": str(e)}]
+        return {"success": False, "error": str(e), "data": []}
 
 
 @mcp.tool()
@@ -155,7 +201,7 @@ def search_messages(
     subject_contains: str | None = None,
     limit: int = 50,
     offset: int = 0,
-) -> list[dict]:
+) -> dict:
     """
     Search messages by sender and/or subject.
 
@@ -171,10 +217,18 @@ def search_messages(
     At least one of sender_contains or subject_contains should be provided.
     """
     try:
-        messages = _search_messages(
+        result = _search_messages(
             executor, account_name, mailbox_path, sender_contains, subject_contains, limit, offset
         )
-        return [asdict(msg) for msg in messages]
+        messages = [asdict(msg) for msg in result["messages"]]
+        return {
+            "success": True,
+            "data": messages,
+            "total": result["total"],
+            "offset": result["offset"],
+            "limit": result["limit"],
+            "has_more": result["has_more"],
+        }
     except AppleScriptError as e:
         logger.error(
             "Failed to search messages in '%s/%s': %s",
@@ -182,7 +236,7 @@ def search_messages(
             mailbox_path,
             e,
         )
-        return [{"error": str(e)}]
+        return {"success": False, "error": str(e), "data": [], "total": 0, "offset": offset, "limit": limit, "has_more": False}
 
 
 @mcp.tool()
@@ -204,12 +258,15 @@ def move_messages(
     Returns success count and new message IDs (IDs change after moving).
     """
     try:
+        # Detect if Gmail account for proper archive workaround
+        is_gmail = _is_account_gmail(account_name)
         return _move_messages(
             executor,
             account_name,
             mailbox_path,
             message_ids,
             destination_mailbox,
+            is_gmail=is_gmail,
         )
     except AppleScriptError as e:
         logger.error(

@@ -3,9 +3,10 @@
 import logging
 from dataclasses import dataclass
 
-from ..applescript.executor import AppleScriptExecutor
+from ..applescript import RECORD_SEP
+from ..applescript.executor import AppleScriptExecutor, AppleScriptError
 from ..applescript.scripts import Scripts
-from ..gmail import is_gmail_account_by_email
+from ..gmail import is_gmail_account
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,16 @@ class Account:
     enabled: bool
     account_type: str
     is_gmail: bool
+
+
+def _check_is_gmail(executor: AppleScriptExecutor, account_name: str) -> bool:
+    """Check if account uses Gmail/Google servers."""
+    try:
+        script = Scripts.get_account_server(account_name)
+        server_name = executor.run(script, timeout=10).strip()
+        return is_gmail_account(server_name)
+    except AppleScriptError:
+        return False
 
 
 def list_accounts(executor: AppleScriptExecutor) -> list[Account]:
@@ -39,7 +50,7 @@ def list_accounts(executor: AppleScriptExecutor) -> list[Account]:
         if not line.strip():
             continue
 
-        parts = line.split("|||")
+        parts = line.split(RECORD_SEP)
         if len(parts) >= 4:
             name = parts[0].strip()
             email = parts[1].strip()
@@ -52,7 +63,7 @@ def list_accounts(executor: AppleScriptExecutor) -> list[Account]:
                     email=email,
                     enabled=enabled,
                     account_type=account_type,
-                    is_gmail=is_gmail_account_by_email(email),
+                    is_gmail=_check_is_gmail(executor, name),
                 )
             )
 

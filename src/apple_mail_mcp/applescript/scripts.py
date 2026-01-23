@@ -1,5 +1,7 @@
 """AppleScript templates for Apple Mail operations."""
 
+from .escape import esc, RECORD_SEP, UNIT_SEP, GROUP_SEP
+
 
 class Scripts:
     """Collection of AppleScript templates for Mail.app interaction."""
@@ -7,7 +9,7 @@ class Scripts:
     @staticmethod
     def list_accounts() -> str:
         """List all mail accounts with their details."""
-        return '''
+        return f'''
 tell application "Mail"
     set output to ""
     repeat with acc in accounts
@@ -15,7 +17,7 @@ tell application "Mail"
         set accEmail to email addresses of acc as string
         set accEnabled to enabled of acc
         set accType to account type of acc as string
-        set output to output & accName & "|||" & accEmail & "|||" & accEnabled & "|||" & accType & linefeed
+        set output to output & accName & (ASCII character 30) & accEmail & (ASCII character 30) & accEnabled & (ASCII character 30) & accType & linefeed
     end repeat
     return output
 end tell
@@ -24,6 +26,7 @@ end tell
     @staticmethod
     def list_mailboxes(account_name: str, include_nested: bool = True) -> str:
         """List mailboxes for a specific account."""
+        account_name = esc(account_name)
         if include_nested:
             return f'''
 tell application "Mail"
@@ -59,7 +62,7 @@ tell application "Mail"
         set fullPath to currentPrefix & mbName
         set msgCount to count of messages of currentMb
         set unreadCount to unread count of currentMb
-        set output to output & fullPath & "|||" & msgCount & "|||" & unreadCount & linefeed
+        set output to output & fullPath & (ASCII character 30) & msgCount & (ASCII character 30) & unreadCount & linefeed
 
         -- Add child mailboxes to queue
         try
@@ -83,7 +86,7 @@ tell application "Mail"
         set mbName to name of mb
         set msgCount to count of messages of mb
         set unreadCount to unread count of mb
-        set output to output & mbName & "|||" & msgCount & "|||" & unreadCount & linefeed
+        set output to output & mbName & (ASCII character 30) & msgCount & (ASCII character 30) & unreadCount & linefeed
     end repeat
 
     return output
@@ -102,6 +105,9 @@ end tell
         content_limit: int | None = None,
     ) -> str:
         """List messages in a mailbox with optional filtering and content."""
+        account_name = esc(account_name)
+        mailbox_path = esc(mailbox_path)
+
         filter_condition = ""
         if unread_only and flagged_only:
             filter_condition = "whose read status is false and flagged status is true"
@@ -132,6 +138,9 @@ tell application "Mail"
     if endIdx > totalCount then set endIdx to totalCount
     if startIdx > totalCount then set startIdx to totalCount + 1
 
+    -- Output total count as first line
+    set output to "TOTAL:" & totalCount & linefeed
+
     repeat with i from startIdx to endIdx
         set msg to item i of msgList
         set msgId to id of msg
@@ -156,7 +165,7 @@ tell application "Mail"
         end repeat
         if ccList is not "" then set ccList to text 1 thru -3 of ccList
 
-        set output to output & msgId & "|||FIELD|||" & msgSubject & "|||FIELD|||" & msgSender & "|||FIELD|||" & toList & "|||FIELD|||" & ccList & "|||FIELD|||" & msgDate & "|||FIELD|||" & msgRead & "|||FIELD|||" & msgFlagged & "|||FIELD|||" & msgContent & "|||MSG|||"
+        set output to output & msgId & (ASCII character 31) & msgSubject & (ASCII character 31) & msgSender & (ASCII character 31) & toList & (ASCII character 31) & ccList & (ASCII character 31) & msgDate & (ASCII character 31) & msgRead & (ASCII character 31) & msgFlagged & (ASCII character 31) & msgContent & (ASCII character 29)
     end repeat
 
     return output
@@ -177,6 +186,9 @@ tell application "Mail"
     if endIdx > totalCount then set endIdx to totalCount
     if startIdx > totalCount then set startIdx to totalCount + 1
 
+    -- Output total count as first line
+    set output to "TOTAL:" & totalCount & linefeed
+
     repeat with i from startIdx to endIdx
         set msg to item i of msgList
         set msgId to id of msg
@@ -185,7 +197,7 @@ tell application "Mail"
         set msgDate to date received of msg as string
         set msgRead to read status of msg
         set msgFlagged to flagged status of msg
-        set output to output & msgId & "|||" & msgSubject & "|||" & msgSender & "|||" & msgDate & "|||" & msgRead & "|||" & msgFlagged & linefeed
+        set output to output & msgId & (ASCII character 30) & msgSubject & (ASCII character 30) & msgSender & (ASCII character 30) & msgDate & (ASCII character 30) & msgRead & (ASCII character 30) & msgFlagged & linefeed
     end repeat
 
     return output
@@ -195,6 +207,8 @@ end tell
     @staticmethod
     def read_message(account_name: str, mailbox_path: str, message_id: int) -> str:
         """Read full message content by ID."""
+        account_name = esc(account_name)
+        mailbox_path = esc(mailbox_path)
         return f'''
 tell application "Mail"
     set acc to account "{account_name}"
@@ -222,7 +236,7 @@ tell application "Mail"
     end repeat
     if ccList is not "" then set ccList to text 1 thru -3 of ccList
 
-    return msgId & "|||FIELD|||" & msgSubject & "|||FIELD|||" & msgSender & "|||FIELD|||" & toList & "|||FIELD|||" & ccList & "|||FIELD|||" & msgDate & "|||FIELD|||" & msgRead & "|||FIELD|||" & msgFlagged & "|||FIELD|||" & msgContent
+    return msgId & (ASCII character 31) & msgSubject & (ASCII character 31) & msgSender & (ASCII character 31) & toList & (ASCII character 31) & ccList & (ASCII character 31) & msgDate & (ASCII character 31) & msgRead & (ASCII character 31) & msgFlagged & (ASCII character 31) & msgContent
 end tell
 '''
 
@@ -232,6 +246,7 @@ end tell
         mailbox_path: str,
         message_id: int,
         destination_mailbox: str,
+        is_gmail: bool = False,
     ) -> str:
         """Move a message to another mailbox.
 
@@ -239,8 +254,22 @@ end tell
         but doesn't remove the source label (INBOX). We use move + archive:
         1. Move to destination (adds the label)
         2. Move from source to All Mail (archives - removes INBOX label)
+
+        For non-Gmail accounts, we use a simple move.
+
+        Args:
+            account_name: Name of the mail account
+            mailbox_path: Source mailbox path
+            message_id: ID of message to move
+            destination_mailbox: Destination mailbox path
+            is_gmail: Whether this is a Gmail account (enables archive workaround)
         """
-        return f'''
+        account_name = esc(account_name)
+        mailbox_path = esc(mailbox_path)
+        destination_mailbox = esc(destination_mailbox)
+
+        if is_gmail:
+            return f'''
 tell application "Mail"
     set acc to account "{account_name}"
     set srcMb to mailbox "{mailbox_path}" of acc
@@ -259,7 +288,22 @@ tell application "Mail"
     end if
     if archiveMb is missing value then
         try
+            set archiveMb to mailbox "Archivo" of acc
+        end try
+    end if
+    if archiveMb is missing value then
+        try
             set archiveMb to mailbox "[Gmail]/All Mail" of acc
+        end try
+    end if
+    if archiveMb is missing value then
+        try
+            set archiveMb to mailbox "[Gmail]/Todos" of acc
+        end try
+    end if
+    if archiveMb is missing value then
+        try
+            set archiveMb to mailbox "Alle Nachrichten" of acc
         end try
     end if
 
@@ -273,13 +317,22 @@ tell application "Mail"
         -- Step 1: Archive the message (removes INBOX label)
         move msg to archiveMb
 
-        -- Step 2: Find in Archive and move to destination
-        set archivedMsg to first message of archiveMb whose subject is msgSubject and date received is msgDateReceived
-        move archivedMsg to destMb
+        -- Step 2: Find in Archive and move to destination with recovery
+        try
+            set archivedMsg to first message of archiveMb whose subject is msgSubject and date received is msgDateReceived
+            move archivedMsg to destMb
 
-        -- Find the message in destination
-        set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
-        set newId to id of movedMsg
+            -- Find the message in destination
+            set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+            set newId to id of movedMsg
+        on error errMsg
+            -- Recovery: move back to source if second move fails
+            try
+                set recoveredMsg to first message of archiveMb whose subject is msgSubject and date received is msgDateReceived
+                move recoveredMsg to srcMb
+            end try
+            error "Move failed, message restored to source: " & errMsg
+        end try
     else
         -- No Archive mailbox, use simple move (may leave in INBOX for Gmail)
         move msg to destMb
@@ -287,7 +340,28 @@ tell application "Mail"
         set newId to id of movedMsg
     end if
 
-    return "moved|||" & newId
+    return "moved" & (ASCII character 30) & newId
+end tell
+'''
+        else:
+            # Non-Gmail: simple move
+            return f'''
+tell application "Mail"
+    set acc to account "{account_name}"
+    set srcMb to mailbox "{mailbox_path}" of acc
+    set destMb to mailbox "{destination_mailbox}" of acc
+    set msg to first message of srcMb whose id is {message_id}
+
+    -- Store identifying info before move
+    set msgSubject to subject of msg
+    set msgDateReceived to date received of msg
+
+    -- Simple move for non-Gmail accounts
+    move msg to destMb
+    set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+    set newId to id of movedMsg
+
+    return "moved" & (ASCII character 30) & newId
 end tell
 '''
 
@@ -296,6 +370,8 @@ end tell
         account_name: str, mailbox_path: str, message_id: int, read: bool
     ) -> str:
         """Set the read status of a message."""
+        account_name = esc(account_name)
+        mailbox_path = esc(mailbox_path)
         read_val = "true" if read else "false"
         return f'''
 tell application "Mail"
@@ -312,6 +388,8 @@ end tell
         account_name: str, mailbox_path: str, message_id: int, flagged: bool
     ) -> str:
         """Set the flagged status of a message."""
+        account_name = esc(account_name)
+        mailbox_path = esc(mailbox_path)
         flagged_val = "true" if flagged else "false"
         return f'''
 tell application "Mail"
@@ -326,6 +404,7 @@ end tell
     @staticmethod
     def get_account_server(account_name: str) -> str:
         """Get the server name for an account (used for Gmail detection)."""
+        account_name = esc(account_name)
         return f'''
 tell application "Mail"
     set acc to account "{account_name}"
@@ -341,6 +420,8 @@ end tell
     @staticmethod
     def read_messages(account_name: str, mailbox_path: str, message_ids: list[int]) -> str:
         """Read multiple messages by their IDs in a single call."""
+        account_name = esc(account_name)
+        mailbox_path = esc(mailbox_path)
         ids_str = ", ".join(str(mid) for mid in message_ids)
         return f'''
 tell application "Mail"
@@ -373,9 +454,9 @@ tell application "Mail"
             end repeat
             if ccList is not "" then set ccList to text 1 thru -3 of ccList
 
-            set output to output & msgId & "|||FIELD|||" & msgSubject & "|||FIELD|||" & msgSender & "|||FIELD|||" & toList & "|||FIELD|||" & ccList & "|||FIELD|||" & msgDate & "|||FIELD|||" & msgRead & "|||FIELD|||" & msgFlagged & "|||FIELD|||" & msgContent & "|||MSG|||"
+            set output to output & msgId & (ASCII character 31) & msgSubject & (ASCII character 31) & msgSender & (ASCII character 31) & toList & (ASCII character 31) & ccList & (ASCII character 31) & msgDate & (ASCII character 31) & msgRead & (ASCII character 31) & msgFlagged & (ASCII character 31) & msgContent & (ASCII character 29)
         on error errMsg
-            set output to output & msgId & "|||FIELD|||ERROR|||FIELD|||" & errMsg & "|||MSG|||"
+            set output to output & msgId & (ASCII character 31) & "ERROR" & (ASCII character 31) & errMsg & (ASCII character 29)
         end try
     end repeat
 
@@ -393,12 +474,15 @@ end tell
         offset: int = 0,
     ) -> str:
         """Search messages by sender and/or subject."""
-        # Build filter conditions
+        account_name = esc(account_name)
+        mailbox_path = esc(mailbox_path)
+
+        # Build filter conditions - escape search terms for AppleScript
         conditions = []
         if sender_contains:
-            conditions.append(f'sender contains "{sender_contains}"')
+            conditions.append(f'sender contains "{esc(sender_contains)}"')
         if subject_contains:
-            conditions.append(f'subject contains "{subject_contains}"')
+            conditions.append(f'subject contains "{esc(subject_contains)}"')
 
         if conditions:
             filter_clause = "whose " + " and ".join(conditions)
@@ -418,6 +502,9 @@ tell application "Mail"
     if endIdx > totalCount then set endIdx to totalCount
     if startIdx > totalCount then set startIdx to totalCount + 1
 
+    -- Output total count as first line
+    set output to "TOTAL:" & totalCount & linefeed
+
     repeat with i from startIdx to endIdx
         set msg to item i of msgList
         set msgId to id of msg
@@ -426,7 +513,7 @@ tell application "Mail"
         set msgDate to date received of msg as string
         set msgRead to read status of msg
         set msgFlagged to flagged status of msg
-        set output to output & msgId & "|||" & msgSubject & "|||" & msgSender & "|||" & msgDate & "|||" & msgRead & "|||" & msgFlagged & linefeed
+        set output to output & msgId & (ASCII character 30) & msgSubject & (ASCII character 30) & msgSender & (ASCII character 30) & msgDate & (ASCII character 30) & msgRead & (ASCII character 30) & msgFlagged & linefeed
     end repeat
 
     return output
@@ -439,6 +526,7 @@ end tell
         mailbox_path: str,
         message_ids: list[int],
         destination_mailbox: str,
+        is_gmail: bool = False,
     ) -> str:
         """Move multiple messages to another mailbox.
 
@@ -446,9 +534,16 @@ end tell
         but doesn't remove the source label (INBOX). We use move + archive:
         1. Move to destination (adds the label)
         2. Move from source to All Mail (archives - removes INBOX label)
+
+        For non-Gmail accounts, we use a simple move.
         """
+        account_name = esc(account_name)
+        mailbox_path = esc(mailbox_path)
+        destination_mailbox = esc(destination_mailbox)
         ids_str = ", ".join(str(mid) for mid in message_ids)
-        return f'''
+
+        if is_gmail:
+            return f'''
 tell application "Mail"
     set acc to account "{account_name}"
     set srcMb to mailbox "{mailbox_path}" of acc
@@ -468,7 +563,22 @@ tell application "Mail"
     end if
     if archiveMb is missing value then
         try
+            set archiveMb to mailbox "Archivo" of acc
+        end try
+    end if
+    if archiveMb is missing value then
+        try
             set archiveMb to mailbox "[Gmail]/All Mail" of acc
+        end try
+    end if
+    if archiveMb is missing value then
+        try
+            set archiveMb to mailbox "[Gmail]/Todos" of acc
+        end try
+    end if
+    if archiveMb is missing value then
+        try
+            set archiveMb to mailbox "Alle Nachrichten" of acc
         end try
     end if
 
@@ -486,23 +596,66 @@ tell application "Mail"
                 -- Step 1: Archive the message (removes INBOX label)
                 move msg to archiveMb
 
-                -- Step 2: Find in Archive and move to destination
-                set archivedMsg to first message of archiveMb whose subject is msgSubject and date received is msgDateReceived
-                move archivedMsg to destMb
+                -- Step 2: Find in Archive and move to destination with recovery
+                try
+                    set archivedMsg to first message of archiveMb whose subject is msgSubject and date received is msgDateReceived
+                    move archivedMsg to destMb
 
-                -- Find the message in destination
-                set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
-                set newId to id of movedMsg
+                    -- Find the message in destination
+                    set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+                    set newId to id of movedMsg
+                    set output to output & msgId & (ASCII character 30) & newId & (ASCII character 30) & "success" & linefeed
+                on error errMsg
+                    -- Recovery: move back to source if second move fails
+                    try
+                        set recoveredMsg to first message of archiveMb whose subject is msgSubject and date received is msgDateReceived
+                        move recoveredMsg to srcMb
+                        set output to output & msgId & (ASCII character 30) & msgId & (ASCII character 30) & "error:recovered - " & errMsg & linefeed
+                    on error
+                        set output to output & msgId & (ASCII character 30) & msgId & (ASCII character 30) & "error:stranded in archive - " & errMsg & linefeed
+                    end try
+                end try
             else
                 -- No Archive mailbox, use simple move (may leave in INBOX for Gmail)
                 move msg to destMb
                 set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
                 set newId to id of movedMsg
+                set output to output & msgId & (ASCII character 30) & newId & (ASCII character 30) & "success" & linefeed
             end if
-
-            set output to output & msgId & "|||" & newId & "|||success" & linefeed
         on error errMsg
-            set output to output & msgId & "|||" & msgId & "|||error:" & errMsg & linefeed
+            set output to output & msgId & (ASCII character 30) & msgId & (ASCII character 30) & "error:" & errMsg & linefeed
+        end try
+    end repeat
+
+    return output
+end tell
+'''
+        else:
+            # Non-Gmail: simple move
+            return f'''
+tell application "Mail"
+    set acc to account "{account_name}"
+    set srcMb to mailbox "{mailbox_path}" of acc
+    set destMb to mailbox "{destination_mailbox}" of acc
+    set idList to {{{ids_str}}}
+    set output to ""
+
+    repeat with msgId in idList
+        try
+            set msg to first message of srcMb whose id is msgId
+
+            -- Store identifying info before move
+            set msgSubject to subject of msg
+            set msgDateReceived to date received of msg
+
+            -- Simple move for non-Gmail accounts
+            move msg to destMb
+            set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+            set newId to id of movedMsg
+
+            set output to output & msgId & (ASCII character 30) & newId & (ASCII character 30) & "success" & linefeed
+        on error errMsg
+            set output to output & msgId & (ASCII character 30) & msgId & (ASCII character 30) & "error:" & errMsg & linefeed
         end try
     end repeat
 
@@ -518,6 +671,8 @@ end tell
         read: bool,
     ) -> str:
         """Set read status for multiple messages."""
+        account_name = esc(account_name)
+        mailbox_path = esc(mailbox_path)
         ids_str = ", ".join(str(mid) for mid in message_ids)
         read_val = "true" if read else "false"
         return f'''
@@ -547,6 +702,8 @@ end tell
         flagged: bool,
     ) -> str:
         """Set flagged status for multiple messages."""
+        account_name = esc(account_name)
+        mailbox_path = esc(mailbox_path)
         ids_str = ", ".join(str(mid) for mid in message_ids)
         flagged_val = "true" if flagged else "false"
         return f'''
@@ -571,7 +728,10 @@ end tell
     @staticmethod
     def create_mailbox(account_name: str, mailbox_name: str, parent_mailbox: str | None = None) -> str:
         """Create a new mailbox in an account."""
+        account_name = esc(account_name)
+        mailbox_name = esc(mailbox_name)
         if parent_mailbox:
+            parent_mailbox = esc(parent_mailbox)
             return f'''
 tell application "Mail"
     set acc to account "{account_name}"
@@ -592,6 +752,9 @@ end tell
     @staticmethod
     def rename_mailbox(account_name: str, mailbox_path: str, new_name: str) -> str:
         """Rename a mailbox."""
+        account_name = esc(account_name)
+        mailbox_path = esc(mailbox_path)
+        new_name = esc(new_name)
         return f'''
 tell application "Mail"
     set acc to account "{account_name}"

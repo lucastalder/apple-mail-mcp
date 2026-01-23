@@ -3,6 +3,7 @@
 import logging
 from dataclasses import dataclass
 
+from ..applescript import RECORD_SEP
 from ..applescript.executor import AppleScriptExecutor
 from ..applescript.scripts import Scripts
 
@@ -42,7 +43,7 @@ def list_mailboxes(
         if not line.strip():
             continue
 
-        parts = line.split("|||")
+        parts = line.split(RECORD_SEP)
         if len(parts) >= 3:
             path = parts[0].strip()
             try:

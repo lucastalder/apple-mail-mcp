@@ -2,6 +2,7 @@
 
 import logging
 
+from ..applescript import RECORD_SEP
 from ..applescript.executor import AppleScriptExecutor
 from ..applescript.scripts import Scripts
 from ..gmail import is_gmail_account_by_email, get_gmail_move_warning
@@ -16,6 +17,7 @@ def move_message(
     message_id: int,
     destination_mailbox: str,
     account_email: str | None = None,
+    is_gmail: bool | None = None,
 ) -> dict:
     """
     Move a message to another mailbox.
@@ -26,20 +28,27 @@ def move_message(
         mailbox_path: Source mailbox path
         message_id: AppleScript message ID
         destination_mailbox: Destination mailbox path
-        account_email: Optional email for Gmail detection
+        account_email: Optional email for Gmail detection (used if is_gmail not provided)
+        is_gmail: Whether this is a Gmail account (enables archive workaround)
 
     Returns:
         Dict with success status and optional warning
     """
+    # Determine if Gmail account
+    if is_gmail is None and account_email:
+        is_gmail = is_gmail_account_by_email(account_email)
+    elif is_gmail is None:
+        is_gmail = False
+
     script = Scripts.move_message(
-        account_name, mailbox_path, message_id, destination_mailbox
+        account_name, mailbox_path, message_id, destination_mailbox, is_gmail
     )
     output = executor.run(script)
 
-    # Parse the new message ID from output (format: "moved|||{new_id}")
+    # Parse the new message ID from output (format: "moved{RECORD_SEP}{new_id}")
     new_id = None
-    if "|||" in output:
-        parts = output.split("|||")
+    if RECORD_SEP in output:
+        parts = output.split(RECORD_SEP)
         if len(parts) >= 2:
             try:
                 new_id = int(parts[1])
@@ -55,9 +64,8 @@ def move_message(
         result["new_message_id"] = new_id
 
     # Add Gmail warning if applicable
-    if account_email and is_gmail_account_by_email(account_email):
-        if mailbox_path.upper() == "INBOX":
-            result["warning"] = get_gmail_move_warning()
+    if is_gmail and mailbox_path.upper() == "INBOX":
+        result["warning"] = get_gmail_move_warning()
 
     logger.info(
         "Moved message %d from '%s' to '%s' in account '%s'",
@@ -142,6 +150,7 @@ def bulk_move_messages(
     mailbox_path: str,
     message_ids: list[int],
     destination_mailbox: str,
+    is_gmail: bool = False,
 ) -> dict:
     """
     Move multiple messages to another mailbox.
@@ -152,12 +161,13 @@ def bulk_move_messages(
         mailbox_path: Source mailbox path
         message_ids: List of message IDs to move
         destination_mailbox: Destination mailbox path
+        is_gmail: Whether this is a Gmail account (enables archive workaround)
 
     Returns:
         Dict with success count and details of moved messages
     """
     script = Scripts.bulk_move_messages(
-        account_name, mailbox_path, message_ids, destination_mailbox
+        account_name, mailbox_path, message_ids, destination_mailbox, is_gmail
     )
     output = executor.run(script, timeout=120)
 
@@ -169,7 +179,7 @@ def bulk_move_messages(
         if not line.strip():
             continue
 
-        parts = line.split("|||")
+        parts = line.split(RECORD_SEP)
         if len(parts) >= 3:
             try:
                 old_id = int(parts[0].strip())

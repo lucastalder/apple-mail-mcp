@@ -2,8 +2,9 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from typing import TypedDict
 
+from ..applescript import RECORD_SEP, UNIT_SEP, GROUP_SEP
 from ..applescript.executor import AppleScriptExecutor
 from ..applescript.scripts import Scripts
 
@@ -37,6 +38,38 @@ class Message:
     content: str
 
 
+class PaginatedMessages(TypedDict):
+    """Paginated message list with metadata."""
+    messages: list[MessageSummary] | list[Message]
+    total: int
+    offset: int
+    limit: int
+    has_more: bool
+
+
+def _parse_total_count(output: str) -> tuple[int, str]:
+    """Extract total count from output and return remaining content.
+
+    Args:
+        output: Raw AppleScript output starting with "TOTAL:N" line
+
+    Returns:
+        Tuple of (total_count, remaining_output)
+    """
+    lines = output.split("\n", 1)
+    total = 0
+    remaining = output
+
+    if lines and lines[0].startswith("TOTAL:"):
+        try:
+            total = int(lines[0][6:])
+        except ValueError:
+            pass
+        remaining = lines[1] if len(lines) > 1 else ""
+
+    return total, remaining
+
+
 def list_messages(
     executor: AppleScriptExecutor,
     account_name: str,
@@ -47,7 +80,7 @@ def list_messages(
     flagged_only: bool = False,
     include_content: bool = False,
     content_limit: int | None = None,
-) -> list[MessageSummary] | list[Message]:
+) -> PaginatedMessages:
     """
     List messages in a mailbox with optional filtering.
 
@@ -63,7 +96,7 @@ def list_messages(
         content_limit: Maximum characters per message body (only used with include_content)
 
     Returns:
-        List of MessageSummary objects (or Message objects if include_content=True)
+        PaginatedMessages dict with messages list and pagination metadata
     """
     script = Scripts.list_messages(
         account_name, mailbox_path, limit, offset, unread_only, flagged_only,
@@ -73,16 +106,19 @@ def list_messages(
     timeout = 120 if include_content else 60
     output = executor.run(script, timeout=timeout)
 
-    messages = []
+    # Extract total count
+    total, output = _parse_total_count(output)
+
+    messages: list[MessageSummary] | list[Message] = []
 
     if include_content:
-        # Parse the |||MSG||| / |||FIELD||| format (same as read_messages)
-        msg_blocks = output.split("|||MSG|||")
+        # Parse the GROUP_SEP / UNIT_SEP format (same as read_messages)
+        msg_blocks = output.split(GROUP_SEP)
         for block in msg_blocks:
             if not block.strip():
                 continue
 
-            parts = block.split("|||FIELD|||")
+            parts = block.split(UNIT_SEP)
             if len(parts) < 9:
                 continue
 
@@ -93,7 +129,7 @@ def list_messages(
 
             content = parts[8] if len(parts) > 8 else ""
             # Note: content_limit is already applied in AppleScript, but add "..." indicator
-            if content_limit is not None and len(content) >= content_limit:
+            if content_limit is not None and len(content) > content_limit:
                 content = content + "..."
 
             messages.append(
@@ -110,12 +146,12 @@ def list_messages(
                 )
             )
     else:
-        # Parse the simple ||| format (summary only)
+        # Parse the simple RECORD_SEP format (summary only)
         for line in output.strip().split("\n"):
             if not line.strip():
                 continue
 
-            parts = line.split("|||")
+            parts = line.split(RECORD_SEP)
             if len(parts) >= 6:
                 try:
                     msg_id = int(parts[0].strip())
@@ -140,9 +176,16 @@ def list_messages(
                 )
 
     logger.info(
-        "Found %d messages in %s/%s", len(messages), account_name, mailbox_path
+        "Found %d messages in %s/%s (total: %d)", len(messages), account_name, mailbox_path, total
     )
-    return messages
+
+    return {
+        "messages": messages,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(messages) < total,
+    }
 
 
 def read_message(
@@ -166,7 +209,7 @@ def read_message(
     script = Scripts.read_message(account_name, mailbox_path, message_id)
     output = executor.run(script, timeout=60)
 
-    parts = output.split("|||FIELD|||")
+    parts = output.split(UNIT_SEP)
     if len(parts) < 9:
         raise ValueError(f"Invalid message response format: got {len(parts)} parts")
 
@@ -211,14 +254,14 @@ def read_messages(
     script = Scripts.read_messages(account_name, mailbox_path, message_ids)
     output = executor.run(script, timeout=120)
 
-    messages = []
-    msg_blocks = output.split("|||MSG|||")
+    messages: list[Message | dict] = []
+    msg_blocks = output.split(GROUP_SEP)
 
     for block in msg_blocks:
         if not block.strip():
             continue
 
-        parts = block.split("|||FIELD|||")
+        parts = block.split(UNIT_SEP)
         if len(parts) < 2:
             continue
 
@@ -264,7 +307,7 @@ def search_messages(
     subject_contains: str | None = None,
     limit: int = 50,
     offset: int = 0,
-) -> list[MessageSummary]:
+) -> PaginatedMessages:
     """
     Search messages by sender and/or subject.
 
@@ -278,19 +321,22 @@ def search_messages(
         offset: Number of messages to skip (for pagination)
 
     Returns:
-        List of MessageSummary objects matching the search criteria
+        PaginatedMessages dict with messages list and pagination metadata
     """
     script = Scripts.search_messages(
         account_name, mailbox_path, sender_contains, subject_contains, limit, offset
     )
     output = executor.run(script, timeout=120)
 
-    messages = []
+    # Extract total count
+    total, output = _parse_total_count(output)
+
+    messages: list[MessageSummary] = []
     for line in output.strip().split("\n"):
         if not line.strip():
             continue
 
-        parts = line.split("|||")
+        parts = line.split(RECORD_SEP)
         if len(parts) >= 6:
             try:
                 msg_id = int(parts[0].strip())
@@ -309,6 +355,13 @@ def search_messages(
             )
 
     logger.info(
-        "Search found %d messages in %s/%s", len(messages), account_name, mailbox_path
+        "Search found %d messages in %s/%s (total: %d)", len(messages), account_name, mailbox_path, total
     )
-    return messages
+
+    return {
+        "messages": messages,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(messages) < total,
+    }
