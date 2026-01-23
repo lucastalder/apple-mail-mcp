@@ -98,8 +98,10 @@ end tell
         offset: int = 0,
         unread_only: bool = False,
         flagged_only: bool = False,
+        include_content: bool = False,
+        content_limit: int | None = None,
     ) -> str:
-        """List messages in a mailbox with optional filtering."""
+        """List messages in a mailbox with optional filtering and content."""
         filter_condition = ""
         if unread_only and flagged_only:
             filter_condition = "whose read status is false and flagged status is true"
@@ -108,7 +110,61 @@ end tell
         elif flagged_only:
             filter_condition = "whose flagged status is true"
 
-        return f'''
+        if include_content:
+            # Include full message data with content
+            content_truncation = ""
+            if content_limit is not None:
+                content_truncation = f'''
+                if (count of msgContent) > {content_limit} then
+                    set msgContent to text 1 thru {content_limit} of msgContent
+                end if'''
+
+            return f'''
+tell application "Mail"
+    set output to ""
+    set acc to account "{account_name}"
+    set mb to mailbox "{mailbox_path}" of acc
+
+    set msgList to (messages of mb {filter_condition})
+    set totalCount to count of msgList
+    set startIdx to {offset} + 1
+    set endIdx to {offset} + {limit}
+    if endIdx > totalCount then set endIdx to totalCount
+    if startIdx > totalCount then set startIdx to totalCount + 1
+
+    repeat with i from startIdx to endIdx
+        set msg to item i of msgList
+        set msgId to id of msg
+        set msgSubject to subject of msg
+        set msgSender to sender of msg
+        set msgDate to date received of msg as string
+        set msgRead to read status of msg
+        set msgFlagged to flagged status of msg
+        set msgContent to content of msg
+        {content_truncation}
+
+        -- Get recipients
+        set toList to ""
+        repeat with recip in to recipients of msg
+            set toList to toList & address of recip & ", "
+        end repeat
+        if toList is not "" then set toList to text 1 thru -3 of toList
+
+        set ccList to ""
+        repeat with recip in cc recipients of msg
+            set ccList to ccList & address of recip & ", "
+        end repeat
+        if ccList is not "" then set ccList to text 1 thru -3 of ccList
+
+        set output to output & msgId & "|||FIELD|||" & msgSubject & "|||FIELD|||" & msgSender & "|||FIELD|||" & toList & "|||FIELD|||" & ccList & "|||FIELD|||" & msgDate & "|||FIELD|||" & msgRead & "|||FIELD|||" & msgFlagged & "|||FIELD|||" & msgContent & "|||MSG|||"
+    end repeat
+
+    return output
+end tell
+'''
+        else:
+            # Summary only (no content)
+            return f'''
 tell application "Mail"
     set output to ""
     set acc to account "{account_name}"

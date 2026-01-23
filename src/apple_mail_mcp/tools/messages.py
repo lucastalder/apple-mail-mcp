@@ -45,7 +45,9 @@ def list_messages(
     offset: int = 0,
     unread_only: bool = False,
     flagged_only: bool = False,
-) -> list[MessageSummary]:
+    include_content: bool = False,
+    content_limit: int | None = None,
+) -> list[MessageSummary] | list[Message]:
     """
     List messages in a mailbox with optional filtering.
 
@@ -57,43 +59,85 @@ def list_messages(
         offset: Number of messages to skip (for pagination)
         unread_only: Only return unread messages
         flagged_only: Only return flagged messages
+        include_content: If True, include message body content (returns Message objects)
+        content_limit: Maximum characters per message body (only used with include_content)
 
     Returns:
-        List of MessageSummary objects
+        List of MessageSummary objects (or Message objects if include_content=True)
     """
     script = Scripts.list_messages(
-        account_name, mailbox_path, limit, offset, unread_only, flagged_only
+        account_name, mailbox_path, limit, offset, unread_only, flagged_only,
+        include_content, content_limit
     )
-    output = executor.run(script, timeout=60)
+    # Use longer timeout when fetching content
+    timeout = 120 if include_content else 60
+    output = executor.run(script, timeout=timeout)
 
     messages = []
-    for line in output.strip().split("\n"):
-        if not line.strip():
-            continue
 
-        parts = line.split("|||")
-        if len(parts) >= 6:
+    if include_content:
+        # Parse the |||MSG||| / |||FIELD||| format (same as read_messages)
+        msg_blocks = output.split("|||MSG|||")
+        for block in msg_blocks:
+            if not block.strip():
+                continue
+
+            parts = block.split("|||FIELD|||")
+            if len(parts) < 9:
+                continue
+
             try:
                 msg_id = int(parts[0].strip())
             except ValueError:
                 continue
 
-            subject = parts[1].strip()
-            sender = parts[2].strip()
-            date = parts[3].strip()
-            is_read = parts[4].strip().lower() == "true"
-            is_flagged = parts[5].strip().lower() == "true"
+            content = parts[8] if len(parts) > 8 else ""
+            # Note: content_limit is already applied in AppleScript, but add "..." indicator
+            if content_limit is not None and len(content) >= content_limit:
+                content = content + "..."
 
             messages.append(
-                MessageSummary(
+                Message(
                     id=msg_id,
-                    subject=subject,
-                    sender=sender,
-                    date=date,
-                    is_read=is_read,
-                    is_flagged=is_flagged,
+                    subject=parts[1].strip(),
+                    sender=parts[2].strip(),
+                    to=parts[3].strip(),
+                    cc=parts[4].strip(),
+                    date=parts[5].strip(),
+                    is_read=parts[6].strip().lower() == "true",
+                    is_flagged=parts[7].strip().lower() == "true",
+                    content=content,
                 )
             )
+    else:
+        # Parse the simple ||| format (summary only)
+        for line in output.strip().split("\n"):
+            if not line.strip():
+                continue
+
+            parts = line.split("|||")
+            if len(parts) >= 6:
+                try:
+                    msg_id = int(parts[0].strip())
+                except ValueError:
+                    continue
+
+                subject = parts[1].strip()
+                sender = parts[2].strip()
+                date = parts[3].strip()
+                is_read = parts[4].strip().lower() == "true"
+                is_flagged = parts[5].strip().lower() == "true"
+
+                messages.append(
+                    MessageSummary(
+                        id=msg_id,
+                        subject=subject,
+                        sender=sender,
+                        date=date,
+                        is_read=is_read,
+                        is_flagged=is_flagged,
+                    )
+                )
 
     logger.info(
         "Found %d messages in %s/%s", len(messages), account_name, mailbox_path

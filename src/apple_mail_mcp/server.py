@@ -80,6 +80,8 @@ def list_messages(
     offset: int = 0,
     unread_only: bool = False,
     flagged_only: bool = False,
+    include_content: bool = False,
+    content_limit: int | None = None,
 ) -> list[dict]:
     """
     List messages in a mailbox with optional filtering.
@@ -91,13 +93,19 @@ def list_messages(
         offset: Number of messages to skip for pagination (default: 0)
         unread_only: Only return unread messages (default: False)
         flagged_only: Only return flagged messages (default: False)
+        include_content: Include message body content (default: False). When True,
+            returns full message objects with to, cc, and content fields.
+        content_limit: Maximum characters per message body (default: None = full).
+            Only used when include_content is True.
 
-    Returns a list of message summaries with id, subject, sender, date,
-    read status, and flagged status. Use the message id for other operations.
+    Returns a list of message summaries (or full messages if include_content=True).
+    Summary includes: id, subject, sender, date, read status, flagged status.
+    Full message adds: to, cc, content.
     """
     try:
         messages = _list_messages(
-            executor, account_name, mailbox_path, limit, offset, unread_only, flagged_only
+            executor, account_name, mailbox_path, limit, offset, unread_only, flagged_only,
+            include_content, content_limit
         )
         return [asdict(msg) for msg in messages]
     except AppleScriptError as e:
