@@ -77,6 +77,7 @@ def list_messages(
     account_name: str,
     mailbox_path: str,
     limit: int = 50,
+    offset: int = 0,
     unread_only: bool = False,
     flagged_only: bool = False,
 ) -> list[dict]:
@@ -87,6 +88,7 @@ def list_messages(
         account_name: The name of the mail account
         mailbox_path: Path to the mailbox (e.g., "INBOX", "Archive")
         limit: Maximum number of messages to return (default: 50)
+        offset: Number of messages to skip for pagination (default: 0)
         unread_only: Only return unread messages (default: False)
         flagged_only: Only return flagged messages (default: False)
 
@@ -95,7 +97,7 @@ def list_messages(
     """
     try:
         messages = _list_messages(
-            executor, account_name, mailbox_path, limit, unread_only, flagged_only
+            executor, account_name, mailbox_path, limit, offset, unread_only, flagged_only
         )
         return [asdict(msg) for msg in messages]
     except AppleScriptError as e:
@@ -142,6 +144,7 @@ def search_messages(
     sender_contains: str | None = None,
     subject_contains: str | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[dict]:
     """
     Search messages by sender and/or subject.
@@ -152,13 +155,14 @@ def search_messages(
         sender_contains: Filter messages where sender contains this string
         subject_contains: Filter messages where subject contains this string
         limit: Maximum number of messages to return (default: 50)
+        offset: Number of messages to skip for pagination (default: 0)
 
     Returns a list of message summaries matching the search criteria.
     At least one of sender_contains or subject_contains should be provided.
     """
     try:
         messages = _search_messages(
-            executor, account_name, mailbox_path, sender_contains, subject_contains, limit
+            executor, account_name, mailbox_path, sender_contains, subject_contains, limit, offset
         )
         return [asdict(msg) for msg in messages]
     except AppleScriptError as e:

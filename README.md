@@ -57,18 +57,19 @@ List mailboxes (folders) for a specific account.
 | include_nested | bool | Include nested mailboxes (default: true) |
 
 ### list_messages
-List messages in a mailbox with optional filtering.
+List messages in a mailbox with optional filtering. Supports pagination via offset.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | account_name | string | The account name |
 | mailbox_path | string | Path to mailbox (e.g., "INBOX") |
 | limit | int | Max messages to return (default: 50) |
+| offset | int | Number of messages to skip for pagination (default: 0) |
 | unread_only | bool | Only unread messages (default: false) |
 | flagged_only | bool | Only flagged messages (default: false) |
 
 ### search_messages
-Search messages by sender and/or subject.
+Search messages by sender and/or subject. Supports pagination via offset.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -77,6 +78,7 @@ Search messages by sender and/or subject.
 | sender_contains | string | Filter by sender (optional) |
 | subject_contains | string | Filter by subject (optional) |
 | limit | int | Max messages to return (default: 50) |
+| offset | int | Number of messages to skip for pagination (default: 0) |
 
 ### read_messages
 Read full content of one or more messages.
@@ -146,6 +148,18 @@ Rename a mailbox.
 ```
 1. list_messages(account="Work", mailbox="INBOX", limit=10, unread_only=true)
 2. read_messages(account="Work", mailbox="INBOX", message_ids=[...])
+```
+
+### Process large inbox with pagination
+```
+# First page (messages 0-49)
+list_messages(account="Work", mailbox="INBOX", limit=50, offset=0)
+
+# Second page (messages 50-99)
+list_messages(account="Work", mailbox="INBOX", limit=50, offset=50)
+
+# Third page (messages 100-149)
+list_messages(account="Work", mailbox="INBOX", limit=50, offset=100)
 ```
 
 ## Requirements

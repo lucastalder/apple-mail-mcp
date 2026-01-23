@@ -42,6 +42,7 @@ def list_messages(
     account_name: str,
     mailbox_path: str,
     limit: int = 50,
+    offset: int = 0,
     unread_only: bool = False,
     flagged_only: bool = False,
 ) -> list[MessageSummary]:
@@ -53,6 +54,7 @@ def list_messages(
         account_name: Name of the mail account
         mailbox_path: Path to the mailbox (e.g., "INBOX")
         limit: Maximum number of messages to return
+        offset: Number of messages to skip (for pagination)
         unread_only: Only return unread messages
         flagged_only: Only return flagged messages
 
@@ -60,7 +62,7 @@ def list_messages(
         List of MessageSummary objects
     """
     script = Scripts.list_messages(
-        account_name, mailbox_path, limit, unread_only, flagged_only
+        account_name, mailbox_path, limit, offset, unread_only, flagged_only
     )
     output = executor.run(script, timeout=60)
 
@@ -212,6 +214,7 @@ def search_messages(
     sender_contains: str | None = None,
     subject_contains: str | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[MessageSummary]:
     """
     Search messages by sender and/or subject.
@@ -223,12 +226,13 @@ def search_messages(
         sender_contains: Filter by sender containing this string
         subject_contains: Filter by subject containing this string
         limit: Maximum number of messages to return
+        offset: Number of messages to skip (for pagination)
 
     Returns:
         List of MessageSummary objects matching the search criteria
     """
     script = Scripts.search_messages(
-        account_name, mailbox_path, sender_contains, subject_contains, limit
+        account_name, mailbox_path, sender_contains, subject_contains, limit, offset
     )
     output = executor.run(script, timeout=120)
 

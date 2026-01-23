@@ -95,6 +95,7 @@ end tell
         account_name: str,
         mailbox_path: str,
         limit: int = 50,
+        offset: int = 0,
         unread_only: bool = False,
         flagged_only: bool = False,
     ) -> str:
@@ -114,10 +115,13 @@ tell application "Mail"
     set mb to mailbox "{mailbox_path}" of acc
 
     set msgList to (messages of mb {filter_condition})
-    set msgCount to count of msgList
-    if msgCount > {limit} then set msgCount to {limit}
+    set totalCount to count of msgList
+    set startIdx to {offset} + 1
+    set endIdx to {offset} + {limit}
+    if endIdx > totalCount then set endIdx to totalCount
+    if startIdx > totalCount then set startIdx to totalCount + 1
 
-    repeat with i from 1 to msgCount
+    repeat with i from startIdx to endIdx
         set msg to item i of msgList
         set msgId to id of msg
         set msgSubject to subject of msg
@@ -294,6 +298,7 @@ end tell
         sender_contains: str | None = None,
         subject_contains: str | None = None,
         limit: int = 50,
+        offset: int = 0,
     ) -> str:
         """Search messages by sender and/or subject."""
         # Build filter conditions
@@ -315,10 +320,13 @@ tell application "Mail"
     set mb to mailbox "{mailbox_path}" of acc
 
     set msgList to (messages of mb {filter_clause})
-    set msgCount to count of msgList
-    if msgCount > {limit} then set msgCount to {limit}
+    set totalCount to count of msgList
+    set startIdx to {offset} + 1
+    set endIdx to {offset} + {limit}
+    if endIdx > totalCount then set endIdx to totalCount
+    if startIdx > totalCount then set startIdx to totalCount + 1
 
-    repeat with i from 1 to msgCount
+    repeat with i from startIdx to endIdx
         set msg to item i of msgList
         set msgId to id of msg
         set msgSubject to subject of msg
