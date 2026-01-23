@@ -307,9 +307,8 @@ tell application "Mail"
         end try
     end if
 
-    -- Store identifying info before move
-    set msgSubject to subject of msg
-    set msgDateReceived to date received of msg
+    -- Store message id (RFC 822 Message-ID) for reliable lookup after move
+    set msgMessageId to message id of msg
 
     -- For Gmail: first archive (move to Archive) to remove INBOX label
     -- Then move from Archive to destination
@@ -319,16 +318,16 @@ tell application "Mail"
 
         -- Step 2: Find in Archive and move to destination with recovery
         try
-            set archivedMsg to first message of archiveMb whose subject is msgSubject and date received is msgDateReceived
+            set archivedMsg to first message of archiveMb whose message id is msgMessageId
             move archivedMsg to destMb
 
             -- Find the message in destination
-            set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+            set movedMsg to first message of destMb whose message id is msgMessageId
             set newId to id of movedMsg
         on error errMsg
             -- Recovery: move back to source if second move fails
             try
-                set recoveredMsg to first message of archiveMb whose subject is msgSubject and date received is msgDateReceived
+                set recoveredMsg to first message of archiveMb whose message id is msgMessageId
                 move recoveredMsg to srcMb
             end try
             error "Move failed, message restored to source: " & errMsg
@@ -336,7 +335,7 @@ tell application "Mail"
     else
         -- No Archive mailbox, use simple move (may leave in INBOX for Gmail)
         move msg to destMb
-        set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+        set movedMsg to first message of destMb whose message id is msgMessageId
         set newId to id of movedMsg
     end if
 
@@ -352,13 +351,12 @@ tell application "Mail"
     set destMb to mailbox "{destination_mailbox}" of acc
     set msg to first message of srcMb whose id is {message_id}
 
-    -- Store identifying info before move
-    set msgSubject to subject of msg
-    set msgDateReceived to date received of msg
+    -- Store message id (RFC 822 Message-ID) for reliable lookup after move
+    set msgMessageId to message id of msg
 
     -- Simple move for non-Gmail accounts
     move msg to destMb
-    set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+    set movedMsg to first message of destMb whose message id is msgMessageId
     set newId to id of movedMsg
 
     return "moved" & (ASCII character 30) & newId
@@ -586,9 +584,8 @@ tell application "Mail"
         try
             set msg to first message of srcMb whose id is msgId
 
-            -- Store identifying info before move
-            set msgSubject to subject of msg
-            set msgDateReceived to date received of msg
+            -- Store message id (RFC 822 Message-ID) for reliable lookup after move
+            set msgMessageId to message id of msg
 
             -- For Gmail: first archive (move to Archive) to remove INBOX label
             -- Then move from Archive to destination
@@ -598,17 +595,17 @@ tell application "Mail"
 
                 -- Step 2: Find in Archive and move to destination with recovery
                 try
-                    set archivedMsg to first message of archiveMb whose subject is msgSubject and date received is msgDateReceived
+                    set archivedMsg to first message of archiveMb whose message id is msgMessageId
                     move archivedMsg to destMb
 
                     -- Find the message in destination
-                    set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+                    set movedMsg to first message of destMb whose message id is msgMessageId
                     set newId to id of movedMsg
                     set output to output & msgId & (ASCII character 30) & newId & (ASCII character 30) & "success" & linefeed
                 on error errMsg
                     -- Recovery: move back to source if second move fails
                     try
-                        set recoveredMsg to first message of archiveMb whose subject is msgSubject and date received is msgDateReceived
+                        set recoveredMsg to first message of archiveMb whose message id is msgMessageId
                         move recoveredMsg to srcMb
                         set output to output & msgId & (ASCII character 30) & msgId & (ASCII character 30) & "error:recovered - " & errMsg & linefeed
                     on error
@@ -618,7 +615,7 @@ tell application "Mail"
             else
                 -- No Archive mailbox, use simple move (may leave in INBOX for Gmail)
                 move msg to destMb
-                set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+                set movedMsg to first message of destMb whose message id is msgMessageId
                 set newId to id of movedMsg
                 set output to output & msgId & (ASCII character 30) & newId & (ASCII character 30) & "success" & linefeed
             end if
@@ -644,13 +641,12 @@ tell application "Mail"
         try
             set msg to first message of srcMb whose id is msgId
 
-            -- Store identifying info before move
-            set msgSubject to subject of msg
-            set msgDateReceived to date received of msg
+            -- Store message id (RFC 822 Message-ID) for reliable lookup after move
+            set msgMessageId to message id of msg
 
             -- Simple move for non-Gmail accounts
             move msg to destMb
-            set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+            set movedMsg to first message of destMb whose message id is msgMessageId
             set newId to id of movedMsg
 
             set output to output & msgId & (ASCII character 30) & newId & (ASCII character 30) & "success" & linefeed
