@@ -233,7 +233,13 @@ end tell
         message_id: int,
         destination_mailbox: str,
     ) -> str:
-        """Move a message to another mailbox."""
+        """Move a message to another mailbox.
+
+        For Gmail/IMAP accounts, a simple 'move' only adds the destination label
+        but doesn't remove the source label (INBOX). We use move + archive:
+        1. Move to destination (adds the label)
+        2. Move from source to All Mail (archives - removes INBOX label)
+        """
         return f'''
 tell application "Mail"
     set acc to account "{account_name}"
@@ -241,15 +247,45 @@ tell application "Mail"
     set destMb to mailbox "{destination_mailbox}" of acc
     set msg to first message of srcMb whose id is {message_id}
 
+    -- Try to find Archive mailbox for Gmail archive behavior
+    set archiveMb to missing value
+    try
+        set archiveMb to mailbox "Archive" of acc
+    end try
+    if archiveMb is missing value then
+        try
+            set archiveMb to mailbox "Archiv" of acc
+        end try
+    end if
+    if archiveMb is missing value then
+        try
+            set archiveMb to mailbox "[Gmail]/All Mail" of acc
+        end try
+    end if
+
     -- Store identifying info before move
     set msgSubject to subject of msg
     set msgDateReceived to date received of msg
 
-    move msg to destMb
+    -- For Gmail: first archive (move to Archive) to remove INBOX label
+    -- Then move from Archive to destination
+    if archiveMb is not missing value then
+        -- Step 1: Archive the message (removes INBOX label)
+        move msg to archiveMb
 
-    -- Find the message in destination by matching subject and date
-    set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
-    set newId to id of movedMsg
+        -- Step 2: Find in Archive and move to destination
+        set archivedMsg to first message of archiveMb whose subject is msgSubject and date received is msgDateReceived
+        move archivedMsg to destMb
+
+        -- Find the message in destination
+        set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+        set newId to id of movedMsg
+    else
+        -- No Archive mailbox, use simple move (may leave in INBOX for Gmail)
+        move msg to destMb
+        set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+        set newId to id of movedMsg
+    end if
 
     return "moved|||" & newId
 end tell
@@ -404,7 +440,13 @@ end tell
         message_ids: list[int],
         destination_mailbox: str,
     ) -> str:
-        """Move multiple messages to another mailbox."""
+        """Move multiple messages to another mailbox.
+
+        For Gmail/IMAP accounts, a simple 'move' only adds the destination label
+        but doesn't remove the source label (INBOX). We use move + archive:
+        1. Move to destination (adds the label)
+        2. Move from source to All Mail (archives - removes INBOX label)
+        """
         ids_str = ", ".join(str(mid) for mid in message_ids)
         return f'''
 tell application "Mail"
@@ -414,6 +456,22 @@ tell application "Mail"
     set idList to {{{ids_str}}}
     set output to ""
 
+    -- Try to find Archive mailbox for Gmail archive behavior
+    set archiveMb to missing value
+    try
+        set archiveMb to mailbox "Archive" of acc
+    end try
+    if archiveMb is missing value then
+        try
+            set archiveMb to mailbox "Archiv" of acc
+        end try
+    end if
+    if archiveMb is missing value then
+        try
+            set archiveMb to mailbox "[Gmail]/All Mail" of acc
+        end try
+    end if
+
     repeat with msgId in idList
         try
             set msg to first message of srcMb whose id is msgId
@@ -422,11 +480,25 @@ tell application "Mail"
             set msgSubject to subject of msg
             set msgDateReceived to date received of msg
 
-            move msg to destMb
+            -- For Gmail: first archive (move to Archive) to remove INBOX label
+            -- Then move from Archive to destination
+            if archiveMb is not missing value then
+                -- Step 1: Archive the message (removes INBOX label)
+                move msg to archiveMb
 
-            -- Find the message in destination by matching subject and date
-            set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
-            set newId to id of movedMsg
+                -- Step 2: Find in Archive and move to destination
+                set archivedMsg to first message of archiveMb whose subject is msgSubject and date received is msgDateReceived
+                move archivedMsg to destMb
+
+                -- Find the message in destination
+                set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+                set newId to id of movedMsg
+            else
+                -- No Archive mailbox, use simple move (may leave in INBOX for Gmail)
+                move msg to destMb
+                set movedMsg to first message of destMb whose subject is msgSubject and date received is msgDateReceived
+                set newId to id of movedMsg
+            end if
 
             set output to output & msgId & "|||" & newId & "|||success" & linefeed
         on error errMsg
