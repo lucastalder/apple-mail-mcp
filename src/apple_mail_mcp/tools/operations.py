@@ -5,7 +5,6 @@ import logging
 from ..applescript import RECORD_SEP
 from ..applescript.executor import AppleScriptExecutor
 from ..applescript.scripts import Scripts
-from ..gmail import is_gmail_account_by_email, get_gmail_move_warning
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +15,6 @@ def move_message(
     mailbox_path: str,
     message_id: int,
     destination_mailbox: str,
-    account_email: str | None = None,
-    is_gmail: bool | None = None,
 ) -> dict:
     """
     Move a message to another mailbox.
@@ -28,20 +25,12 @@ def move_message(
         mailbox_path: Source mailbox path
         message_id: AppleScript message ID
         destination_mailbox: Destination mailbox path
-        account_email: Optional email for Gmail detection (used if is_gmail not provided)
-        is_gmail: Whether this is a Gmail account (enables archive workaround)
 
     Returns:
-        Dict with success status and optional warning
+        Dict with success status
     """
-    # Determine if Gmail account
-    if is_gmail is None and account_email:
-        is_gmail = is_gmail_account_by_email(account_email)
-    elif is_gmail is None:
-        is_gmail = False
-
     script = Scripts.move_message(
-        account_name, mailbox_path, message_id, destination_mailbox, is_gmail
+        account_name, mailbox_path, message_id, destination_mailbox
     )
     output = executor.run(script)
 
@@ -62,10 +51,6 @@ def move_message(
 
     if new_id is not None:
         result["new_message_id"] = new_id
-
-    # Add Gmail warning if applicable
-    if is_gmail and mailbox_path.upper() == "INBOX":
-        result["warning"] = get_gmail_move_warning()
 
     logger.info(
         "Moved message %d from '%s' to '%s' in account '%s'",
@@ -150,7 +135,6 @@ def bulk_move_messages(
     mailbox_path: str,
     message_ids: list[int],
     destination_mailbox: str,
-    is_gmail: bool = False,
 ) -> dict:
     """
     Move multiple messages to another mailbox.
@@ -161,13 +145,12 @@ def bulk_move_messages(
         mailbox_path: Source mailbox path
         message_ids: List of message IDs to move
         destination_mailbox: Destination mailbox path
-        is_gmail: Whether this is a Gmail account (enables archive workaround)
 
     Returns:
         Dict with success count and details of moved messages
     """
     script = Scripts.bulk_move_messages(
-        account_name, mailbox_path, message_ids, destination_mailbox, is_gmail
+        account_name, mailbox_path, message_ids, destination_mailbox
     )
     output = executor.run(script, timeout=120)
 

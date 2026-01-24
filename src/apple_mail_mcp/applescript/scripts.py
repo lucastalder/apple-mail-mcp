@@ -246,105 +246,20 @@ end tell
         mailbox_path: str,
         message_id: int,
         destination_mailbox: str,
-        is_gmail: bool = False,
     ) -> str:
         """Move a message to another mailbox.
-
-        For Gmail/IMAP accounts, a simple 'move' only adds the destination label
-        but doesn't remove the source label (INBOX). We use move + archive:
-        1. Move to destination (adds the label)
-        2. Move from source to All Mail (archives - removes INBOX label)
-
-        For non-Gmail accounts, we use a simple move.
 
         Args:
             account_name: Name of the mail account
             mailbox_path: Source mailbox path
             message_id: ID of message to move
             destination_mailbox: Destination mailbox path
-            is_gmail: Whether this is a Gmail account (enables archive workaround)
         """
         account_name = esc(account_name)
         mailbox_path = esc(mailbox_path)
         destination_mailbox = esc(destination_mailbox)
 
-        if is_gmail:
-            return f'''
-tell application "Mail"
-    set acc to account "{account_name}"
-    set srcMb to mailbox "{mailbox_path}" of acc
-    set destMb to mailbox "{destination_mailbox}" of acc
-    set msg to first message of srcMb whose id is {message_id}
-
-    -- Try to find Archive mailbox for Gmail archive behavior
-    set archiveMb to missing value
-    try
-        set archiveMb to mailbox "Archive" of acc
-    end try
-    if archiveMb is missing value then
-        try
-            set archiveMb to mailbox "Archiv" of acc
-        end try
-    end if
-    if archiveMb is missing value then
-        try
-            set archiveMb to mailbox "Archivo" of acc
-        end try
-    end if
-    if archiveMb is missing value then
-        try
-            set archiveMb to mailbox "[Gmail]/All Mail" of acc
-        end try
-    end if
-    if archiveMb is missing value then
-        try
-            set archiveMb to mailbox "[Gmail]/Todos" of acc
-        end try
-    end if
-    if archiveMb is missing value then
-        try
-            set archiveMb to mailbox "Alle Nachrichten" of acc
-        end try
-    end if
-
-    -- Store message id (RFC 822 Message-ID) for reliable lookup after move
-    set msgMessageId to message id of msg
-
-    -- For Gmail: first archive (move to Archive) to remove INBOX label
-    -- Then move from Archive to destination
-    if archiveMb is not missing value then
-        -- Step 1: Archive the message (removes INBOX label)
-        move msg to archiveMb
-
-        -- Step 2: Find in Archive and move to destination with recovery
-        try
-            set archivedMsg to first message of archiveMb whose message id is msgMessageId
-            move archivedMsg to destMb
-
-            -- Find the message in destination
-            set movedMsg to first message of destMb whose message id is msgMessageId
-            set newId to id of movedMsg
-        on error errMsg
-            -- Recovery: move back to source if second move fails
-            try
-                set recoveredMsg to first message of archiveMb whose message id is msgMessageId
-                move recoveredMsg to srcMb
-            end try
-            error "Move failed, message restored to source: " & errMsg
-        end try
-    else
-        -- No Archive mailbox, use simple move (may leave in INBOX for Gmail)
-        move msg to destMb
-        set movedMsg to first message of destMb whose message id is msgMessageId
-        set newId to id of movedMsg
-    end if
-
-    return "moved" & (ASCII character 30) & newId
-end tell
-'''
-        else:
-            # Non-Gmail: simple move
-            return f'''
+        return f'''
 tell application "Mail"
     set acc to account "{account_name}"
     set srcMb to mailbox "{mailbox_path}" of acc
@@ -354,7 +269,6 @@ tell application "Mail"
     -- Store message id (RFC 822 Message-ID) for reliable lookup after move
     set msgMessageId to message id of msg
 
-    -- Simple move for non-Gmail accounts
     move msg to destMb
     set movedMsg to first message of destMb whose message id is msgMessageId
     set newId to id of movedMsg
@@ -396,22 +310,6 @@ tell application "Mail"
     set msg to first message of mb whose id is {message_id}
     set flagged status of msg to {flagged_val}
     return "done"
-end tell
-'''
-
-    @staticmethod
-    def get_account_server(account_name: str) -> str:
-        """Get the server name for an account (used for Gmail detection)."""
-        account_name = esc(account_name)
-        return f'''
-tell application "Mail"
-    set acc to account "{account_name}"
-    try
-        set serverName to server name of acc
-        return serverName
-    on error
-        return ""
-    end try
 end tell
 '''
 
@@ -524,112 +422,14 @@ end tell
         mailbox_path: str,
         message_ids: list[int],
         destination_mailbox: str,
-        is_gmail: bool = False,
     ) -> str:
-        """Move multiple messages to another mailbox.
-
-        For Gmail/IMAP accounts, a simple 'move' only adds the destination label
-        but doesn't remove the source label (INBOX). We use move + archive:
-        1. Move to destination (adds the label)
-        2. Move from source to All Mail (archives - removes INBOX label)
-
-        For non-Gmail accounts, we use a simple move.
-        """
+        """Move multiple messages to another mailbox."""
         account_name = esc(account_name)
         mailbox_path = esc(mailbox_path)
         destination_mailbox = esc(destination_mailbox)
         ids_str = ", ".join(str(mid) for mid in message_ids)
 
-        if is_gmail:
-            return f'''
-tell application "Mail"
-    set acc to account "{account_name}"
-    set srcMb to mailbox "{mailbox_path}" of acc
-    set destMb to mailbox "{destination_mailbox}" of acc
-    set idList to {{{ids_str}}}
-    set output to ""
-
-    -- Try to find Archive mailbox for Gmail archive behavior
-    set archiveMb to missing value
-    try
-        set archiveMb to mailbox "Archive" of acc
-    end try
-    if archiveMb is missing value then
-        try
-            set archiveMb to mailbox "Archiv" of acc
-        end try
-    end if
-    if archiveMb is missing value then
-        try
-            set archiveMb to mailbox "Archivo" of acc
-        end try
-    end if
-    if archiveMb is missing value then
-        try
-            set archiveMb to mailbox "[Gmail]/All Mail" of acc
-        end try
-    end if
-    if archiveMb is missing value then
-        try
-            set archiveMb to mailbox "[Gmail]/Todos" of acc
-        end try
-    end if
-    if archiveMb is missing value then
-        try
-            set archiveMb to mailbox "Alle Nachrichten" of acc
-        end try
-    end if
-
-    repeat with msgId in idList
-        try
-            set msg to first message of srcMb whose id is msgId
-
-            -- Store message id (RFC 822 Message-ID) for reliable lookup after move
-            set msgMessageId to message id of msg
-
-            -- For Gmail: first archive (move to Archive) to remove INBOX label
-            -- Then move from Archive to destination
-            if archiveMb is not missing value then
-                -- Step 1: Archive the message (removes INBOX label)
-                move msg to archiveMb
-
-                -- Step 2: Find in Archive and move to destination with recovery
-                try
-                    set archivedMsg to first message of archiveMb whose message id is msgMessageId
-                    move archivedMsg to destMb
-
-                    -- Find the message in destination
-                    set movedMsg to first message of destMb whose message id is msgMessageId
-                    set newId to id of movedMsg
-                    set output to output & msgId & (ASCII character 30) & newId & (ASCII character 30) & "success" & linefeed
-                on error errMsg
-                    -- Recovery: move back to source if second move fails
-                    try
-                        set recoveredMsg to first message of archiveMb whose message id is msgMessageId
-                        move recoveredMsg to srcMb
-                        set output to output & msgId & (ASCII character 30) & msgId & (ASCII character 30) & "error:recovered - " & errMsg & linefeed
-                    on error
-                        set output to output & msgId & (ASCII character 30) & msgId & (ASCII character 30) & "error:stranded in archive - " & errMsg & linefeed
-                    end try
-                end try
-            else
-                -- No Archive mailbox, use simple move (may leave in INBOX for Gmail)
-                move msg to destMb
-                set movedMsg to first message of destMb whose message id is msgMessageId
-                set newId to id of movedMsg
-                set output to output & msgId & (ASCII character 30) & newId & (ASCII character 30) & "success" & linefeed
-            end if
-        on error errMsg
-            set output to output & msgId & (ASCII character 30) & msgId & (ASCII character 30) & "error:" & errMsg & linefeed
-        end try
-    end repeat
-
-    return output
-end tell
-'''
-        else:
-            # Non-Gmail: simple move
-            return f'''
+        return f'''
 tell application "Mail"
     set acc to account "{account_name}"
     set srcMb to mailbox "{mailbox_path}" of acc
@@ -644,7 +444,6 @@ tell application "Mail"
             -- Store message id (RFC 822 Message-ID) for reliable lookup after move
             set msgMessageId to message id of msg
 
-            -- Simple move for non-Gmail accounts
             move msg to destMb
             set movedMsg to first message of destMb whose message id is msgMessageId
             set newId to id of movedMsg

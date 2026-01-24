@@ -6,8 +6,6 @@ from dataclasses import asdict
 from mcp.server.fastmcp import FastMCP
 
 from .applescript.executor import AppleScriptExecutor, AppleScriptError
-from .applescript.scripts import Scripts
-from .gmail import is_gmail_account
 from .tools.accounts import list_accounts as _list_accounts
 from .tools.mailboxes import (
     list_mailboxes as _list_mailboxes,
@@ -38,29 +36,6 @@ mcp = FastMCP("Apple Mail")
 # Shared executor instance
 executor = AppleScriptExecutor()
 
-# Cache for Gmail detection (by server name)
-_account_is_gmail: dict[str, bool] = {}
-
-
-def _is_account_gmail(account_name: str) -> bool:
-    """Check if an account uses Gmail/Google servers.
-
-    Uses server name detection to catch both @gmail.com accounts
-    and Google Workspace accounts with custom domains.
-    """
-    if account_name in _account_is_gmail:
-        return _account_is_gmail[account_name]
-
-    try:
-        script = Scripts.get_account_server(account_name)
-        server_name = executor.run(script, timeout=10).strip()
-        result = is_gmail_account(server_name)
-        _account_is_gmail[account_name] = result
-        return result
-    except AppleScriptError:
-        _account_is_gmail[account_name] = False
-        return False
-
 
 @mcp.tool()
 def list_accounts() -> dict:
@@ -68,7 +43,7 @@ def list_accounts() -> dict:
     List all mail accounts configured in Apple Mail.
 
     Returns a list of accounts with their name, email, enabled status,
-    account type, and whether they appear to be Gmail accounts.
+    and account type.
     """
     try:
         accounts = _list_accounts(executor)
@@ -256,17 +231,18 @@ def move_messages(
         destination_mailbox: The destination mailbox path
 
     Returns success count and new message IDs (IDs change after moving).
+
+    Note: For Gmail accounts, moving messages may not remove the original label
+    (e.g., INBOX) due to Gmail's label-based system. Messages may appear in both
+    locations. This is a Mail.app/AppleScript limitation with Gmail IMAP.
     """
     try:
-        # Detect if Gmail account for proper archive workaround
-        is_gmail = _is_account_gmail(account_name)
         return _move_messages(
             executor,
             account_name,
             mailbox_path,
             message_ids,
             destination_mailbox,
-            is_gmail=is_gmail,
         )
     except AppleScriptError as e:
         logger.error(
